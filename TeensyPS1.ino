@@ -1,11 +1,10 @@
-class Controller {
+class TeensyPS1 {
   public:
-    Controller() {}
+    TeensyPS1() {}
 
-    void init(byte data, byte cmd, byte clk, byte ss, byte led) {
+    void init(byte data, byte cmd, byte clk, byte cs[], byte led[], byte numControllers) {
       // Data pin with internal pull-up
       pinMode(data, INPUT_PULLUP);
-      //digitalWrite(data, HIGH);
       this->data = data;
 
       // Command pin
@@ -17,38 +16,47 @@ class Controller {
       digitalWrite(clk, HIGH);
       this->clk = clk;
 
-      // Chip select pins with high idle
-      pinMode(ss, OUTPUT);
-      digitalWrite(ss, HIGH);
-      this->ss = ss;
-      
-      // LED indicators
-      pinMode(led, OUTPUT);
-      this->led = led;
+      this->numControllers = numControllers;
+      for (int i = 0; i < numControllers; i++) {
+        // Chip select pins with high idle
+        pinMode(cs[i], OUTPUT);
+        digitalWrite(cs[i], HIGH);
+        this->cs[i] = cs[i];
+
+        // LED Indicators
+        pinMode(led[i], OUTPUT);
+        this->led[i] = led[i];
+      }
     }
     
     void poll() {
-      delay(1);
-      
-      // Bring SS low to start communication
-      digitalWrite(ss, LOW);
-      exchange(0x01); // START
-      exchange(0x42); // BEGIN READ
-      exchange(0xFF); // WAIT BEGIN READ
-      byte buttonData1 = ~exchange(0xFF); // RESPONSE BYTE 1
-      byte buttonData2 = ~exchange(0xFF); // RESPONSE BYTE 1
-      // Bring SS high to end communication
-      digitalWrite(ss, HIGH);
+      delay(16);
 
-      // int mask of button data
-      int buttonData = (buttonData2 << 8) | buttonData1;
+      int buttons = 0;
+      byte buttonData1 = 0;
+      byte buttonData2 = 0;
 
-      // Light the LED if a button is being pressed
-      digitalWrite(led, buttonData ? HIGH : LOW);
+      for (int i = 0; i < numControllers; i++) {
+        // Bring CS low to start communication
+        digitalWrite(cs[i], LOW);
+        exchange(0x01); // START
+        exchange(0x42); // BEGIN READ
+        exchange(0xFF); // WAIT BEGIN READ
+        buttonData1 = ~exchange(0xFF); // RESPONSE BYTE 1
+        buttonData2 = ~exchange(0xFF); // RESPONSE BYTE 2
+        // Bring SS high to end communication
+        digitalWrite(cs[i], HIGH);
 
-      // Set the joystick buttons
-      for (int i = 0; i < 16; i++)
-        Joystick.button(i + 1, buttonData & (1 << i));
+        // 16b bitfield of all button states
+        buttons = (buttonData2 << 8) | buttonData1;
+
+        // Light the corresponding LED if any button is pressed
+        digitalWrite(led[i], (bool)buttons);
+
+        for (int j = 0; j < 16; j++) {
+          Joystick.button((i * 16) + j + 1, (bool)(buttons & (1 << j)));
+        }
+      }
     }
 
   private:
@@ -85,24 +93,27 @@ class Controller {
     byte data;
     byte cmd;
     byte clk;
-    byte ss;
-    byte led;
+    byte cs[2];
+    byte led[2];
+    byte numControllers;
 };
 
-#define DATA 15
+#define DATA 13
 #define CMD 14
-#define CLK 13
-#define CS 12
-#define LED 11
+#define CLK 15
+#define CS1 12
+#define LED1 11
+#define CS2 10
+#define LED2 9
 
-Controller ctrl;
+TeensyPS1 joystick;
 
 void setup() {
-  ctrl.init(DATA, CMD, CLK, CS, LED);
+  byte cs[] = {CS1, CS2};
+  byte led[] = {LED1, LED2};
+  joystick.init(DATA, CMD, CLK, cs, led , 2);
 }
 
-void loop()
-{    
-  ctrl.poll();
+void loop() {    
+  joystick.poll();
 }
-
